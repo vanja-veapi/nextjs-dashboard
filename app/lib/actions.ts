@@ -1,0 +1,76 @@
+'use server';
+
+import { revalidatePath } from 'next/cache';
+import { redirect } from 'next/navigation';
+import postgres from 'postgres';
+import { z } from 'zod';
+
+const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
+
+// ? coerce === "prisiljavati"
+
+const FormSchema = z.object({
+	id: z.string(),
+	customerId: z.string(),
+	// SRBIJA Mana kod coerce je sto ce i prazan string da konvertuje i dobicemo 0, cesto to moze da bude uzrok bagova: NPR age: "" => age = 0
+	amount: z.coerce.number(), // coerce - Sta god da dobijes, pokusaj da pretvoris u number
+	status: z.enum(['pending', 'paid']),
+	date: z.string(),
+});
+
+const CreateInvoice = FormSchema.omit({ id: true, date: true });
+
+// SRBIJA - Ovaj kod ce se izvrsiti na serveru nakon submita forme. Mozemo da pristupimo bazama podataka, API-jima, i slicno, ali ne mozemo da koristimo React hooks ili browser API-je.
+export async function createInvoice(formData: FormData) {
+	// Ako imam vise podataka, mogu da ih dobijem ovako, umesto da pisem rucno svaki field:
+	// for (let [key, value] of formData.entries()) {
+	// 	console.log({ key, value });
+	// } // Ovo se koristi u praksi za debuggovanje, jer moze da se desi da postoje iste vrednosti, izlistace mi obe
+
+	// Ovo se koristi za slanje kao JSON
+	// Object.fromEntries(formData.entries()) // uzima sve parove iz FormData i pretvara ih u jedan običan JS objekat
+
+	const { amount, customerId, status } = CreateInvoice.parse({
+		customerId: formData.get('customerId'),
+		amount: formData.get('amount'),
+		status: formData.get('status'),
+	});
+
+	// STORING VALUE IN CENTS - Dobra je i preporucna praksa da se novcane vrednosti cuvaju u manjoj valuti (centi, pare) kako bi se izbegao JS floating point greska i osigura preciznost
+	// floating point: 0.1+0.2 = 0.300000000000004
+	const amountInCents = amount * 100;
+	const date = new Date().toISOString().split('T')[0];
+
+	await sql`INSERT INTO invoices (customer_id, amount, status, date)
+	VALUES(${customerId}, ${amountInCents}, ${status}, ${date})`;
+
+	// Test it out:
+	revalidatePath('/dashboard/invoices'); // Osvezi rutu da vidimo da li je bilo nekih promena
+	redirect('/dashboard/invoices');
+}
+
+const UpdateInvoice = FormSchema.omit({ id: true, date: true });
+
+export async function updateInvoice(id: string, formData: FormData) {
+	const { customerId, amount, status } = UpdateInvoice.parse({
+		customerId: formData.get('customerId'),
+		amount: formData.get('amount'),
+		status: formData.get('status'),
+	});
+
+	const amountInCents = amount * 100;
+
+	await sql`
+    UPDATE invoices
+    SET customer_id = ${customerId}, amount = ${amountInCents}, status = ${status}
+    WHERE id = ${id}
+  `;
+
+	revalidatePath('/dashboard/invoices');
+	redirect('/dashboard/invoices');
+}
+
+export async function deleteInvoice(id: string) {
+	await sql`DELETE FROM invoices WHERE id = ${id}`;
+	revalidatePath('/dashboard/invoices');
+}

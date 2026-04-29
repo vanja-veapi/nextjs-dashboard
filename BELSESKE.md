@@ -88,3 +88,18 @@ STA JE STREAMING?
   Postoje dva nacina implementacije:
     1. na page level-u, sa `loading.tsx` - Sto under the hood dodaje <Suspense/>
     2. I na nivou komponente, sa importom <Suspense/> iz react-a
+
+Sta su SERVER ACTIONS?
+  - React Server Actions nam omogucava da asinhroni kod pokrenemo direktno na serveru.
+  Eliminise potrebu da se kreira API endpoint koji ce da radi mutaciju podataka. Umesto toga, pisemo asinhronu funkciju koja se pokrece na serveru i moze da se pozove ili u Clientskoj ili Serverskoj komponenti
+  - Pitanje sigurnostu spada u top prioritete u izradi web aplikacija. Serverske akcije to pokrivaju, oni ukljucju feature kao sto su `encrypted closures`, `strict input checks`, `error message hashing`, `host restrictions` itd. Svi zajedno rade na znacajnom poboljsanju bezbednosti aplikacije
+  - U telu asinhrone funkcije koristimo `use server` direktivu i time govorimo da ce kod da se pokrene na serveru ili Da se napravi poseban file `lib/<nesto.ts> i da tu dodamo `use server` i tu skladistimo sve export fn
+
+  ### STORING VALUE IN CENTS - Dobra je i preporucna praksa da se novcane vrednosti cuvaju u manjoj valuti (centi, pare) kako bi se izbegao JS floating point greska i osigura preciznost
+	### floating point: 0.1+0.2 = 0.300000000000004
+
+  ## UUIDs vs. Auto-incrementing Keys
+
+  > We use UUIDs instead of incrementing keys (e.g., 1, 2, 3, etc.). This makes the URL longer; however, UUIDs eliminate the risk of ID collision, are globally unique, and reduce the risk of enumeration attacks - making them ideal for large databases.
+
+  > However, if you prefer cleaner URLs, you might prefer to use auto-incrementing keys.
