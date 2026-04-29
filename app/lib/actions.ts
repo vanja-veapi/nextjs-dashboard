@@ -7,21 +7,25 @@ import { z } from 'zod';
 
 const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
-// ? coerce === "prisiljavati"
-
 const FormSchema = z.object({
 	id: z.string(),
-	customerId: z.string(),
+	customerId: z.string({
+		invalid_type_error: 'Please select a customer.',
+	}),
 	// SRBIJA Mana kod coerce je sto ce i prazan string da konvertuje i dobicemo 0, cesto to moze da bude uzrok bagova: NPR age: "" => age = 0
-	amount: z.coerce.number(), // coerce - Sta god da dobijes, pokusaj da pretvoris u number
-	status: z.enum(['pending', 'paid']),
+	amount: z.coerce // coerce - Sta god da dobijes, pokusaj da pretvoris u number
+		.number() // ? coerce === "prisiljavati"
+		.gt(0, { message: 'Please enter an amount greater than $0.' }),
+	status: z.enum(['pending', 'paid'], {
+		invalid_type_error: 'Please select an invoice status.',
+	}),
 	date: z.string(),
 });
 
 const CreateInvoice = FormSchema.omit({ id: true, date: true });
 
 // SRBIJA - Ovaj kod ce se izvrsiti na serveru nakon submita forme. Mozemo da pristupimo bazama podataka, API-jima, i slicno, ali ne mozemo da koristimo React hooks ili browser API-je.
-export async function createInvoice(formData: FormData) {
+export async function createInvoice(prevState: State, formData: FormData) {
 	// Ako imam vise podataka, mogu da ih dobijem ovako, umesto da pisem rucno svaki field:
 	// for (let [key, value] of formData.entries()) {
 	// 	console.log({ key, value });
@@ -30,11 +34,20 @@ export async function createInvoice(formData: FormData) {
 	// Ovo se koristi za slanje kao JSON
 	// Object.fromEntries(formData.entries()) // uzima sve parove iz FormData i pretvara ih u jedan običan JS objekat
 
-	const { amount, customerId, status } = CreateInvoice.parse({
+	const validatedFields = CreateInvoice.safeParse({
 		customerId: formData.get('customerId'),
 		amount: formData.get('amount'),
 		status: formData.get('status'),
 	});
+
+	if (!validatedFields.success) {
+		return {
+			errors: validatedFields.error.flatten().fieldErrors,
+			message: 'Missing Fields. Failed to Create Invoice.',
+		};
+	}
+
+	const { customerId, amount, status } = validatedFields.data;
 
 	// STORING VALUE IN CENTS - Dobra je i preporucna praksa da se novcane vrednosti cuvaju u manjoj valuti (centi, pare) kako bi se izbegao JS floating point greska i osigura preciznost
 	// floating point: 0.1+0.2 = 0.300000000000004
@@ -90,3 +103,12 @@ export async function deleteInvoice(id: string) {
 	await sql`DELETE FROM invoices WHERE id = ${id}`;
 	revalidatePath('/dashboard/invoices');
 }
+
+export type State = {
+	errors?: {
+		customerId?: string[];
+		amount?: string[];
+		status?: string[];
+	};
+	message?: string | null;
+};
